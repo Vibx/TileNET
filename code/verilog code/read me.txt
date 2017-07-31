@@ -1,0 +1,131 @@
+/////////////////////////////////////////////////////////////////////////////////////
+Project: TileNET: Scalable Architecture for High-throughput Ternary Convolution Neural Networks using FPGAs
+
+The file contains the detailed for the implementation of a AlexNet in FPGA.
+
+////////////////////////////////////////////////////////////////////////////////
+
+1. Implementation Details:
+	Language used: Verilog
+	Tool: Xilinx vivado
+	FPGA: Virtex 7.
+
+2. Design Overview.
+
+2. a. Ternary Compute
+
+	module: mux_logic
+	This module implements the Ternary compute. 
+	input: 8 bits of input vector and 2 bits weight vector.
+	output : 9 bits of output vector(multication of inputs).
+
+	This multiplier is been designed using a Mux logic.
+	
+	A 4x1 Mux is used to sel the idata based on the weight vector.
+	weight vector 	| 	output
+		00	| 	0
+		01	| 	input_vector
+		10	|	0
+		11 	| 	~(input_vector)
+	2's comp is used to complement the input vector.  
+
+	NOte: 9th bit is signed bit.
+
+2. b. Adder Tree. 
+
+	The 9 Mulitiplications(Ternary compute) is followed by adder Tree. 
+
+	IP cores are used for adders. 
+
+	3 stage pipeline has been selected for the adders as the operations are considered as per cycle. 
+	For improving the delay, the pipelines has to considered for adder tree. 
+
+	
+2. c. Processing Element
+
+	The PE is the combination of 9 Ternary Computes(as tile size is considered as 3x3) followed by an adder tree. 
+
+	the output of 9 ternary computes are given to the adder tree. 
+	the input for the adder tree is increased by 1 after each stage. 
+	
+	For stage 1: 9 bit adders are used.
+	For stage 2 : 10 bit adders and soon.(This is to be considered as carry will be there for addtion).
+
+	After the final stage: output_Vector is made to 16 bits.
+
+2. d. PE with Tiles.
+
+	The PEs are grouped together for the implementing the entire kernel.
+	If the Kernel size is 3x3: Only one PE is required.
+	If the kernel size is higher, the kernel(weight vector) is partioned to several 3x3 tiles and implemented in parallel and then added. 
+
+	Ex: If kernel size is 11x11(Layer1), 16 PEs are used in parallel and output is given to adder tree. 
+	All these can be set using the parameters(see parameters section).
+
+2. d. PE with Tiles x N. 
+
+	Once the Entire weight vector has been implemented by PE(or PEs). 
+	The Next part is, same thing has to done for the all the input feature maps(N).
+	The PE with Tiles is replicated with N times followed by adder tree in this module.
+
+2. e. PE with Tiles x N x C. 
+
+	The parallelisation factor(C) determines the no. of output pixel that can be computed in parallel. 
+	The Factor C determes the parallelization based on the Estimation wrt the resources availablity in FPGA. 
+	Similarly the above module is replicated C times. 
+
+	This module is a Convolutional Layer.
+
+2. f. Convolutional Layer. 
+	The convolutional layer of different input and output feature maps can be implemented using the above module by varing the parameters w.r.t the layer.
+
+3. Memories.
+
+	BRAMS are used for implementation of the memories.
+	BRAMs are the part of the ip cores. 
+	In the ip core the required width and depth are specified. 
+	Each BRAM tile has 36K(512x72) memory, or 2x 18k(512x36) memory. 
+	i.e, if the width is <= 36k if consumes 0.5 BRAM Tile. 
+		else if consumes 1 BRAM tile.
+	based on the above considerations the input and weight memories are designed.
+
+4. Design Parameters from config.vh 
+
+INP_FEATURE_MAPS 		// Specifies the no. of input feature Maps. ex: Layer 1 it is 3. 
+INP_FEATURE_EVEN                   // if N is even, this value should be N else This should be N+1
+
+MUX_LOGIC_IDATA_SIZE  		         // Size of the input data to the Mux				
+MUX_LOGIC_ODATA_SIZE               // Size of the output data from Mux     
+MUX_LOGIC_SELECT                   // Size of the kernel data input to the Mux    
+
+PE_NO_OF_MUXES                     // NO of Muxes in PE (no. of ternary computes 3x3tile)
+PE_ODATA_SIZE                     // Output data from PE
+
+COMPUTE_KERNEL_WIDTH               // Computation Tile width 3x3    
+
+SS_NO_OF_TILES_IN_KERNEL          // no of Tiles in kernel . Depends on Kernel size Ex: 16 for layer 1, 4 for layer 2, 3 for others.
+ADDR_TILES                         // clog2(SS_NO_OF_TILES_IN_KERNEL)
+
+KERNEL_WIDTH_FOR_COMPUTE              //COMPUTE_KERNEL_WIDTH * SQRT(SS_NO_OF_TILES_IN_KERNEL)
+KERNEL_SIZE_FOR_COMPUTE           // KERNEL_WIDTH_FOR_COMPUTE*KERNEL_WIDTH_FOR_COMPUTE
+
+ADDER_WIDTH                           // Width of adder
+
+IMG_PXL_BITS                           // No. of Bits for pixel 
+
+LAYER_KERNEL_WIDTH 		// LAYER_KERNEL_WIDTH K =11, for layer1
+LAYER_KERNEL_HEIGHT 		// LAYER_KERNEL_HEIGHT K =11
+LAYER_KERNEL_SIZE 		// LAYER_KERNEL_SIZE K =11*11
+LAYER_ROW_RDWR_EN_WIDTH 	// LAYER1_ROW_FIFO_RDWR_EN_WIDTH = K
+
+MAX_POOL_TILE            	// Max pool tile_size 
+MAX_POOL_WIDTH          	// Max_pool width
+
+LAYER_C 6              		// Parallelisation factor
+MAX_POOL_ENABLE 1        	// 1 -> enable max pool , 0 -> disable
+
+
+
+	
+
+	
